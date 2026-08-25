@@ -14,8 +14,10 @@ swift build            # debug build
 ./tests/run.sh         # end-to-end test suite
 ```
 
-You need Xcode 16+ (a Swift 6 toolchain) on macOS 14 or newer. The test suite
-additionally uses Python 3, which ships with macOS.
+You need a Swift 5.9+ toolchain (Xcode 15 or newer) on macOS 14 or newer —
+CI builds with Swift 5.10, so please keep the code buildable there rather
+than relying on newer language modes. The test suite additionally uses
+Python 3, which ships with macOS.
 
 ## Project layout
 

@@ -6,7 +6,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)](#requirements)
-[![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
+[![Swift](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)
 [![CI](https://github.com/MacBachi/CleanPDF/actions/workflows/ci.yml/badge.svg)](https://github.com/MacBachi/CleanPDF/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/MacBachi/CleanPDF?include_prereleases&sort=semver)](https://github.com/MacBachi/CleanPDF/releases/latest)
 
@@ -103,7 +103,8 @@ cd CleanPDF
 cp -R build/CleanPDF.app /Applications/
 ```
 
-Requires Xcode 16+ / a Swift 6 toolchain on macOS 14 or newer.
+Requires a Swift 5.9 or newer toolchain (Xcode 15+) on macOS 14 or newer.
+CI builds with Swift 5.10; development happens on Swift 6.x — both work.
 
 ## Usage
 
