@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-08-25
+
+### Fixed
+- Package now builds on the Swift 5.10 toolchain used by GitHub's macOS
+  runners (lowered `swift-tools-version`, removed a concurrency error from
+  capturing a mutated `var` in a detached task). No user-visible behaviour
+  change; this makes CI and the automated release pipeline work.
+- App bundle version string is now `1.0.0`-style semantic versioning.
+
 ## [1.0.0] — 2026-08-25
 
 Initial public release.
