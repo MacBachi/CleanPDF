@@ -75,9 +75,9 @@ final class JobQueue: ObservableObject {
         guard let job = jobs.first(where: { $0.status == .waiting }) else { return }
         isProcessing = true
 
-        var options = SanitizeOptions()
-        options.dpi = CGFloat(dpi)
-        options.ocr = ocrEnabled
+        // A `let` (not a mutated `var`): the value is captured by the detached
+        // task below, and capturing a var there is a concurrency error.
+        let options = SanitizeOptions(dpi: CGFloat(dpi), ocr: ocrEnabled)
 
         let input = job.input
         let output = Self.outputURL(for: input)
