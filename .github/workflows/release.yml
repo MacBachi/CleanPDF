@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish app
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & test
+        run: |
+          swift build -c release
+          ./tests/run.sh
+
+      - name: Build app bundle
+        run: ./build-app.sh
+
+      - name: Package
+        run: |
+          cd build
+          ditto -c -k --sequesterRsrc --keepParent CleanPDF.app CleanPDF-${{ github.ref_name }}-macos.zip
+          shasum -a 256 CleanPDF-${{ github.ref_name }}-macos.zip > CleanPDF-${{ github.ref_name }}-macos.zip.sha256
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            build/CleanPDF-${{ github.ref_name }}-macos.zip
+            build/CleanPDF-${{ github.ref_name }}-macos.zip.sha256
