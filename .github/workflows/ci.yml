@@ -12,9 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-15: oldest supported image (Xcode 16 / Swift 6.0–6.1)
-        # macos-26: current image (latest Xcode / Swift)
-        os: [macos-15, macos-26]
+        # macos-15:       oldest supported image (Swift 6.1)
+        # macos-26:       current image (newest Swift)
+        # macos-15-intel: Intel hardware, so the x86_64 code path is exercised
+        os: [macos-15, macos-26, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

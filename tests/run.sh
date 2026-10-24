@@ -9,7 +9,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BIN=".build/release/CleanPDF"
+# CLEANPDF_BIN tests a prebuilt binary (e.g. the one inside a release
+# artifact) instead of building from source.
+BIN="${CLEANPDF_BIN:-.build/release/CleanPDF}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -18,8 +20,13 @@ fail=0
 ok()   { print -P "%F{green}  ✓%f $1"; pass=$((pass+1)) }
 bad()  { print -P "%F{red}  ✗%f $1"; fail=$((fail+1)) }
 
-print -P "%F{cyan}==>%f Building release binary"
-swift build -c release >/dev/null
+if [[ -n "${CLEANPDF_BIN:-}" ]]; then
+    print -P "%F{cyan}==>%f Testing prebuilt binary $BIN ($(uname -m))"
+    [[ -x "$BIN" ]] || { print -u2 "not executable: $BIN"; exit 2 }
+else
+    print -P "%F{cyan}==>%f Building release binary"
+    swift build -c release >/dev/null
+fi
 
 print -P "%F{cyan}==>%f Preparing fixtures in $WORK"
 python3 tests/make_evil_pdf.py "$WORK/evil.pdf"          >/dev/null

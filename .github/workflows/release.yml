@@ -3,23 +3,23 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual run = dry run: build and verify, but publish only for v* tags.
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & publish app
+  build:
+    name: Build universal app
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build & test
-        run: |
-          swift build -c release
-          ./tests/run.sh
+      - name: Test from source
+        run: ./tests/run.sh
 
-      - name: Build app bundle
+      - name: Build app bundle (arm64 + x86_64)
         run: ./build-app.sh
 
       - name: Package
@@ -28,11 +28,59 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent CleanPDF.app CleanPDF-${{ github.ref_name }}-macos.zip
           shasum -a 256 CleanPDF-${{ github.ref_name }}-macos.zip > CleanPDF-${{ github.ref_name }}-macos.zip.sha256
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v3
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-zip
+          path: |
+            build/CleanPDF-${{ github.ref_name }}-macos.zip
+            build/CleanPDF-${{ github.ref_name }}-macos.zip.sha256
+          if-no-files-found: error
+
+  verify:
+    # Run the full test suite against the exact binary that will be published,
+    # on Intel and on Apple silicon, before anything is released.
+    name: Verify artifact (${{ matrix.os }})
+    needs: build
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos-15-intel, macos-26]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-zip
+          path: dist
+
+      - name: Check checksum and unpack
+        run: |
+          cd dist
+          shasum -a 256 -c CleanPDF-${{ github.ref_name }}-macos.zip.sha256
+          ditto -x -k CleanPDF-${{ github.ref_name }}-macos.zip .
+          lipo -info CleanPDF.app/Contents/MacOS/CleanPDF
+
+      - name: Test the packaged binary
+        env:
+          CLEANPDF_BIN: ${{ github.workspace }}/dist/CleanPDF.app/Contents/MacOS/CleanPDF
+        run: ./tests/run.sh
+
+  publish:
+    name: Publish release
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-zip
+          path: dist
+
+      - uses: softprops/action-gh-release@v3
         with:
           draft: false
           generate_release_notes: true
           files: |
-            build/CleanPDF-${{ github.ref_name }}-macos.zip
-            build/CleanPDF-${{ github.ref_name }}-macos.zip.sha256
+            dist/CleanPDF-${{ github.ref_name }}-macos.zip
+            dist/CleanPDF-${{ github.ref_name }}-macos.zip.sha256
