@@ -216,6 +216,7 @@ enum RiskAnalyzer {
         var attachmentCount = 0
         var multimediaTypes = Set<String>()
         var widgetCount = 0
+        var jbig2Pages: [Int] = []
 
         for pageNumber in 1...max(1, doc.numberOfPages) {
             guard let page = doc.page(at: pageNumber), let pageDict = page.dictionary else { continue }
@@ -224,6 +225,17 @@ enum RiskAnalyzer {
             if CGPDFDictionaryGetDictionary(pageDict, "AA", &pageAA), let pageAA {
                 markers.insert("/AA")
                 classifyAdditionalActions(pageAA, context: "Seite \(pageNumber)", findings: &findings, markers: &markers)
+            }
+
+            var resources: CGPDFDictionaryRef?
+            if CGPDFDictionaryGetDictionary(pageDict, "Resources", &resources), let resources {
+                var filters = Set<String>()
+                var budget = 500
+                collectImageFilters(resources: resources, depth: 0, budget: &budget, into: &filters)
+                if filters.contains("JBIG2Decode") {
+                    markers.insert("/JBIG2Decode")
+                    jbig2Pages.append(pageNumber)
+                }
             }
 
             var annots: CGPDFArrayRef?
@@ -310,12 +322,82 @@ enum RiskAnalyzer {
                 details: multimediaTypes.sorted().map { "Typ: \($0)" }
             ))
         }
+        if !jbig2Pages.isEmpty {
+            let pages = jbig2Pages.prefix(20).map(String.init).joined(separator: ", ")
+                + (jbig2Pages.count > 20 ? " …" : "")
+            // Info, not a scored risk: JBIG2 is common in ordinary scans and is
+            // not active content. It is reported because its decoder is a known
+            // parser attack surface (FORCEDENTRY, 2021, hit CoreGraphics' JBIG2
+            // decoder through a PDF).
+            findings.append(RiskFinding(
+                severity: .info,
+                title: "Bilddaten im JBIG2-Format",
+                details: [
+                    "Seiten: \(pages)",
+                    "Kein aktiver Inhalt. Der JBIG2-Decoder war aber Angriffsweg des Exploits FORCEDENTRY (2021).",
+                ]
+            ))
+        }
         if widgetCount > 0 && !findings.contains(where: { $0.title.contains("AcroForm") }) {
             findings.append(RiskFinding(
                 severity: .medium,
                 title: "Formularfelder auf Seiten",
                 details: ["\(widgetCount) Feld(er)"]
             ))
+        }
+    }
+
+    /// Collects the /Filter names of image XObjects reachable from a resource
+    /// dictionary, descending into Form XObjects. `budget` bounds the total
+    /// number of XObjects visited, so self-referencing forms can't loop.
+    private static func collectImageFilters(
+        resources: CGPDFDictionaryRef,
+        depth: Int,
+        budget: inout Int,
+        into filters: inout Set<String>
+    ) {
+        guard depth < 6, budget > 0 else { return }
+        var xobjects: CGPDFDictionaryRef?
+        guard CGPDFDictionaryGetDictionary(resources, "XObject", &xobjects), let xobjects else { return }
+
+        // The applier block can't touch inout parameters; collect first.
+        var streams: [CGPDFStreamRef] = []
+        CGPDFDictionaryApplyBlock(xobjects, { _, value, _ in
+            var stream: CGPDFStreamRef?
+            if CGPDFObjectGetValue(value, .stream, &stream), let stream {
+                streams.append(stream)
+            }
+            return true
+        }, nil)
+
+        for stream in streams {
+            guard budget > 0 else { return }
+            budget -= 1
+            guard let dict = CGPDFStreamGetDictionary(stream) else { continue }
+
+            var subtypePtr: UnsafePointer<Int8>?
+            let subtype = CGPDFDictionaryGetName(dict, "Subtype", &subtypePtr)
+                ? String(cString: subtypePtr!) : ""
+
+            if subtype == "Image" {
+                var namePtr: UnsafePointer<Int8>?
+                var filterArray: CGPDFArrayRef?
+                if CGPDFDictionaryGetName(dict, "Filter", &namePtr), let namePtr {
+                    filters.insert(String(cString: namePtr))
+                } else if CGPDFDictionaryGetArray(dict, "Filter", &filterArray), let filterArray {
+                    for i in 0..<CGPDFArrayGetCount(filterArray) {
+                        var itemPtr: UnsafePointer<Int8>?
+                        if CGPDFArrayGetName(filterArray, i, &itemPtr), let itemPtr {
+                            filters.insert(String(cString: itemPtr))
+                        }
+                    }
+                }
+            } else if subtype == "Form" {
+                var formResources: CGPDFDictionaryRef?
+                if CGPDFDictionaryGetDictionary(dict, "Resources", &formResources), let formResources {
+                    collectImageFilters(resources: formResources, depth: depth + 1, budget: &budget, into: &filters)
+                }
+            }
         }
     }
 
@@ -521,6 +603,7 @@ enum RiskAnalyzer {
             ("/XFA", .medium, "XFA-Marker"),
             ("/SubmitForm", .medium, "Formular-Versand-Marker"),
             ("/ByteRange", .info, "Signatur-Marker"),
+            ("/JBIG2Decode", .info, "JBIG2-Bildfilter"),
         ]
 
         var rawOnly: [String] = []

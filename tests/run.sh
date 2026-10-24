@@ -32,6 +32,7 @@ print -P "%F{cyan}==>%f Preparing fixtures in $WORK"
 python3 tests/make_evil_pdf.py "$WORK/evil.pdf"          >/dev/null
 python3 tests/make_binary_stream_pdf.py "$WORK/binfp.pdf" >/dev/null
 python3 tests/make_huge_page_pdf.py "$WORK/huge.pdf"      >/dev/null
+python3 tests/make_jbig2_pdf.py "$WORK/jbig2.pdf"         >/dev/null
 
 # --- Test 1: hostile PDF scores critical, lists the threats ---------------
 print -P "%F{cyan}==>%f Risk analysis"
@@ -78,6 +79,18 @@ grep -q "reduzierter Auflösung" <<<"$huge_out" && ok "downscale reported" || ba
     || bad "peak memory ${rss:-?} bytes"
 size_ok=$(swift tests/check_geometry.swift --size "$WORK/huge (safe).pdf" 2>/dev/null | tail -1)
 [[ "$size_ok" == "14400x14400" ]] && ok "page size kept at 14400x14400 pt" || bad "page size changed ($size_ok)"
+
+# --- Test 8: JBIG2 image data is reported, but not scored -----------------
+print -P "%F{cyan}==>%f JBIG2 detection"
+scan_jb="$("$BIN" --scan "$WORK/jbig2.pdf")" && jb_exit=0 || jb_exit=$?
+grep -q "Bilddaten im JBIG2-Format" <<<"$scan_jb" && ok "JBIG2 image data reported" || bad "JBIG2 not reported"
+grep -q "Seiten: 1, 2$" <<<"$scan_jb" && ok "direct and form-nested images found, Flate image ignored" \
+    || bad "wrong JBIG2 pages: $(grep Seiten <<<"$scan_jb")"
+[[ $jb_exit -eq 0 ]] && grep -q "RISIKO 0/100" <<<"$scan_jb" && ok "informational only (score 0, exit 0)" \
+    || bad "JBIG2 changed the score or exit code"
+jb_out="$("$BIN" "$WORK/jbig2.pdf" 2>/dev/null || true)"
+grep -q "Ausgabe geprüft" <<<"$jb_out" && ok "undecodable JBIG2 data does not stop sanitization" \
+    || bad "sanitizing broken JBIG2 failed"
 
 print ""
 print -P "%F{cyan}==>%f $pass passed, $fail failed"
