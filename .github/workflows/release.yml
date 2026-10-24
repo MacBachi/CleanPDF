@@ -10,9 +10,9 @@ permissions:
 jobs:
   release:
     name: Build & publish app
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build & test
         run: |
@@ -29,7 +29,7 @@ jobs:
           shasum -a 256 CleanPDF-${{ github.ref_name }}-macos.zip > CleanPDF-${{ github.ref_name }}-macos.zip.sha256
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: false
           generate_release_notes: true
