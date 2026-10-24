@@ -18,7 +18,7 @@ final class SanitizeJob: ObservableObject, Identifiable {
     enum Status: Equatable {
         case waiting
         case running(page: Int, of: Int)
-        case done(output: URL)
+        case done(output: URL, downscaledPages: [Int])
         case failed(message: String)
     }
 
@@ -85,7 +85,7 @@ final class JobQueue: ObservableObject {
 
         Task.detached(priority: .userInitiated) {
             do {
-                try Sanitizer.sanitize(input: input, output: output, options: options) { page, count in
+                let result = try Sanitizer.sanitize(input: input, output: output, options: options) { page, count in
                     Task { @MainActor in
                         JobQueue.shared.update(jobID: jobID, status: .running(page: page, of: count))
                     }
@@ -93,7 +93,7 @@ final class JobQueue: ObservableObject {
                 let verification = RiskAnalyzer.analyze(url: output)
                 await MainActor.run {
                     JobQueue.shared.jobs.first(where: { $0.id == jobID })?.outputReport = verification
-                    JobQueue.shared.update(jobID: jobID, status: .done(output: output))
+                    JobQueue.shared.update(jobID: jobID, status: .done(output: output, downscaledPages: result.downscaledPages))
                     JobQueue.shared.finishAndContinue()
                 }
             } catch {
@@ -288,7 +288,7 @@ struct JobRow: View {
                     RiskBadge(report: report, expanded: $showDetails)
                 }
 
-                if case .done(let output) = job.status {
+                if case .done(let output, _) = job.status {
                     verificationBadge
                     Button("Im Finder zeigen") {
                         NSWorkspace.shared.activateFileViewerSelecting([output])
@@ -352,8 +352,9 @@ struct JobRow: View {
             return "Wartet …"
         case .running(let page, let count):
             return "Seite \(page) von \(count) wird bereinigt …"
-        case .done(let output):
-            return "Fertig: \(output.lastPathComponent)"
+        case .done(let output, let downscaled):
+            let base = "Fertig: \(output.lastPathComponent)"
+            return downscaled.isEmpty ? base : base + " — " + downscaleNote(downscaled)
         case .failed(let message):
             return message
         }

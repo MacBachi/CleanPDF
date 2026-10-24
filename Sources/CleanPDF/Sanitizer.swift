@@ -28,6 +28,36 @@ struct SanitizeOptions: Sendable {
     var ocrLanguages: [String] = ["de-DE", "en-US"]
 }
 
+/// Upper bounds on the bitmap rendered for a single page. A PDF can declare a
+/// page of up to 14400 x 14400 pt in a few hundred bytes; rendered at 200 dpi
+/// that is a 1.6-gigapixel bitmap (~6.4 GB). Pages above the budget are
+/// rendered at a reduced resolution instead; their size in points is kept.
+enum RenderBudget {
+    /// 50 MP ≈ 200 MB of RGBA. DIN A2 at 300 dpi (35 MP) still fits.
+    static let maxPixels: Double = 50_000_000
+    /// Longest bitmap side; keeps well inside JPEG and CoreGraphics limits.
+    static let maxSide: Double = 20_000
+
+    /// Pixels per point for a page of `pointSize` at the requested dpi,
+    /// reduced as needed to stay within the budget. Nil for degenerate sizes.
+    static func scale(for pointSize: CGSize, dpi: CGFloat) -> CGFloat? {
+        let w = Double(pointSize.width), h = Double(pointSize.height)
+        guard w.isFinite, h.isFinite, w > 0, h > 0, dpi > 0 else { return nil }
+        let requested = Double(dpi) / 72.0
+        let byArea = (maxPixels / (w * h)).squareRoot()
+        let bySide = maxSide / max(w, h)
+        return CGFloat(min(requested, byArea, bySide))
+    }
+}
+
+/// What a sanitize run reports back besides the output file.
+struct SanitizeResult: Sendable {
+    var pageCount: Int
+    /// 1-based numbers of pages rendered below the requested dpi because
+    /// they exceeded the render budget.
+    var downscaledPages: [Int] = []
+}
+
 enum SanitizeError: LocalizedError {
     case cannotOpen
     case encrypted
@@ -64,7 +94,7 @@ enum Sanitizer {
         output: URL,
         options: SanitizeOptions = SanitizeOptions(),
         progress: (@Sendable (Int, Int) -> Void)? = nil
-    ) throws {
+    ) throws -> SanitizeResult {
         guard let doc = CGPDFDocument(input as CFURL) else {
             throw SanitizeError.cannotOpen
         }
@@ -83,6 +113,7 @@ enum Sanitizer {
             throw SanitizeError.cannotCreateOutput
         }
 
+        var result = SanitizeResult(pageCount: pageCount)
         for pageNumber in 1...pageCount {
             progress?(pageNumber, pageCount)
             guard let page = doc.page(at: pageNumber) else { continue }
@@ -98,6 +129,9 @@ enum Sanitizer {
             let boxData = Data(bytes: &mediaBox, count: MemoryLayout<CGRect>.size)
             let pageInfo: [CFString: Any] = [kCGPDFContextMediaBox: boxData]
             pdfContext.beginPDFPage(pageInfo as CFDictionary)
+            if rendered.downscaled {
+                result.downscaledPages.append(pageNumber)
+            }
             pdfContext.draw(rendered.image, in: pageBox)
             if options.ocr {
                 drawInvisibleTextLayer(
@@ -110,6 +144,7 @@ enum Sanitizer {
             pdfContext.endPDFPage()
         }
         pdfContext.closePDF()
+        return result
     }
 
     /// Effective page rectangle in points, normalized to origin zero and
@@ -125,10 +160,15 @@ enum Sanitizer {
     private struct RenderedPage {
         /// JPEG-backed CGImage; Quartz embeds the JPEG data directly (DCTDecode).
         var image: CGImage
+        /// True when the render budget forced a lower resolution than requested.
+        var downscaled: Bool
     }
 
     private static func renderPage(_ page: CGPDFPage, pointSize: CGSize, options: SanitizeOptions) -> RenderedPage? {
-        let scale = options.dpi / 72.0
+        guard let scale = RenderBudget.scale(for: pointSize, dpi: options.dpi) else { return nil }
+        // Small tolerance so float rounding at exactly the requested dpi isn't
+        // reported as a downscale.
+        let downscaled = scale < options.dpi / 72.0 * 0.999
         let pixelWidth = max(1, Int((pointSize.width * scale).rounded()))
         let pixelHeight = max(1, Int((pointSize.height * scale).rounded()))
 
@@ -162,7 +202,7 @@ enum Sanitizer {
         guard let raw = bitmap.makeImage(),
               let jpegBacked = jpegBackedImage(from: raw, quality: options.jpegQuality)
         else { return nil }
-        return RenderedPage(image: jpegBacked)
+        return RenderedPage(image: jpegBacked, downscaled: downscaled)
     }
 
     /// Re-encode as JPEG and wrap the JPEG data in a CGImage so the PDF
@@ -250,4 +290,11 @@ enum Sanitizer {
         }
         context.restoreGState()
     }
+}
+/// Human-readable note for pages rendered below the requested resolution.
+func downscaleNote(_ pages: [Int]) -> String {
+    let list = pages.prefix(10).map(String.init).joined(separator: ", ")
+        + (pages.count > 10 ? " …" : "")
+    let noun = pages.count == 1 ? "Seite" : "Seiten"
+    return "\(noun) \(list) wegen Übergröße mit reduzierter Auflösung gerendert"
 }

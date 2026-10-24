@@ -88,12 +88,15 @@ struct Entry {
                 output = JobQueue.outputURL(for: input)
             }
             do {
-                try Sanitizer.sanitize(input: input, output: output, options: options) { page, count in
+                let result = try Sanitizer.sanitize(input: input, output: output, options: options) { page, count in
                     FileHandle.standardError.write(Data("\(input.lastPathComponent): Seite \(page)/\(count)\n".utf8))
                 }
                 let verification = RiskAnalyzer.analyze(url: output)
                 if verification.score == 0 {
                     print("OK  \(output.path)  [Ausgabe geprüft: keine aktiven Elemente]")
+                    if !result.downscaledPages.isEmpty {
+                        print("    HINWEIS: \(downscaleNote(result.downscaledPages))")
+                    }
                 } else {
                     print("WARNUNG  \(output.path)  [Ausgabe-Prüfung fand noch Score \(verification.score)!]")
                     printReport(verification, file: output.lastPathComponent)

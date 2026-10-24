@@ -24,6 +24,7 @@ swift build -c release >/dev/null
 print -P "%F{cyan}==>%f Preparing fixtures in $WORK"
 python3 tests/make_evil_pdf.py "$WORK/evil.pdf"          >/dev/null
 python3 tests/make_binary_stream_pdf.py "$WORK/binfp.pdf" >/dev/null
+python3 tests/make_huge_page_pdf.py "$WORK/huge.pdf"      >/dev/null
 
 # --- Test 1: hostile PDF scores critical, lists the threats ---------------
 print -P "%F{cyan}==>%f Risk analysis"
@@ -42,6 +43,7 @@ grep -q "RISIKO 0/100" <<<"$scan_fp" && ok "binary /JS in stream -> score 0 (no 
 print -P "%F{cyan}==>%f Sanitization"
 out="$("$BIN" "$WORK/evil.pdf" 2>/dev/null || true)"
 grep -q "Ausgabe geprüft" <<<"$out" && ok "output self-verification passed" || bad "output verification"
+grep -q "HINWEIS" <<<"$out" && bad "normal page reported as downscaled" || ok "normal page rendered at full dpi"
 safe="$WORK/evil (safe).pdf"
 [[ -f "$safe" ]] && ok "output file created" || bad "no output file"
 
@@ -57,6 +59,18 @@ grep -q "RISIKO 0/100" <<<"$rescan" && ok "sanitized output -> score 0" || bad "
 print -P "%F{cyan}==>%f Rendering geometry"
 geom_ok=$(swift tests/check_geometry.swift "$WORK/evil.pdf" "$safe" 2>/dev/null | tail -1)
 [[ "$geom_ok" == "GEOMETRY_OK" ]] && ok "page size & content box preserved" || bad "geometry mismatch ($geom_ok)"
+
+# --- Test 7: render budget caps memory on oversized pages ----------------
+print -P "%F{cyan}==>%f Render budget"
+huge_out="$( { /usr/bin/time -l "$BIN" "$WORK/huge.pdf" ; } 2>&1 || true)"
+rss=$(awk '/maximum resident set size/ {print $1}' <<<"$huge_out")
+grep -q "Ausgabe geprüft" <<<"$huge_out" && ok "oversized page sanitized" || bad "oversized page failed"
+grep -q "reduzierter Auflösung" <<<"$huge_out" && ok "downscale reported" || bad "downscale not reported"
+# Unbudgeted this needs ~2 GB; the 50 MP budget stays well under 1 GB.
+(( rss > 0 && rss < 1000000000 )) && ok "peak memory $((rss / 1048576)) MB (< 1 GB)" \
+    || bad "peak memory ${rss:-?} bytes"
+size_ok=$(swift tests/check_geometry.swift --size "$WORK/huge (safe).pdf" 2>/dev/null | tail -1)
+[[ "$size_ok" == "14400x14400" ]] && ok "page size kept at 14400x14400 pt" || bad "page size changed ($size_ok)"
 
 print ""
 print -P "%F{cyan}==>%f $pass passed, $fail failed"

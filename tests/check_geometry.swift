@@ -3,6 +3,7 @@
 // the bounding box of the dark (content) pixels. Prints GEOMETRY_OK on match.
 //
 // Usage: swift tests/check_geometry.swift original.pdf sanitized.pdf
+//        swift tests/check_geometry.swift --size file.pdf
 import CoreGraphics
 import Foundation
 
@@ -37,6 +38,17 @@ func contentBox(_ path: String) -> (w: Int, h: Int, box: (Int, Int, Int, Int))? 
 }
 
 let args = CommandLine.arguments
+
+// --size <pdf>: print the first page's effective size in points as WxH.
+if args.count >= 3, args[1] == "--size" {
+    guard let doc = CGPDFDocument(URL(fileURLWithPath: args[2]) as CFURL),
+          let page = doc.page(at: 1) else { print("READ_FAILED"); exit(1) }
+    let crop = page.getBoxRect(.cropBox)
+    let rotated = abs(page.rotationAngle) % 180 == 90
+    print("\(Int(rotated ? crop.height : crop.width))x\(Int(rotated ? crop.width : crop.height))")
+    exit(0)
+}
+
 guard args.count >= 3, let a = contentBox(args[1]), let b = contentBox(args[2]) else {
     print("READ_FAILED"); exit(1)
 }
