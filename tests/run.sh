@@ -178,6 +178,17 @@ grep -q "Speichergrenze (100 MB) bei Seite 2" <<<"$mem_out" && ok "worker killed
 [[ ! -e "$WORK/slowbig (safe).pdf" ]] && ok "partial output removed after memory kill" \
     || bad "partial output left after memory kill"
 
+# --- Test 14: OCR text layer: other scripts, separated lines --------------
+print -P "%F{cyan}==>%f OCR text layer"
+cp "$WORK/rich.pdf" "$WORK/richocr.pdf"
+"$BIN" "$WORK/richocr.pdf" >/dev/null 2>&1 || true
+ocr_text="$(swift tests/pdf_text.swift "$WORK/richocr (safe).pdf" 2>/dev/null || true)"
+for word in "quick brown fox" "日本語" "简体中文"; do
+    grep -qF "$word" <<<"$ocr_text" && ok "OCR text searchable: $word" || bad "OCR missed: $word"
+done
+grep -qF "0123456789 Helvetica" <<<"$ocr_text" && ok "OCR lines are separated in extracted text" \
+    || bad "OCR lines run together"
+
 print ""
 print -P "%F{cyan}==>%f $pass passed, $fail failed"
 [[ $fail -eq 0 ]]
