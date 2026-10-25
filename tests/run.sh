@@ -135,6 +135,11 @@ for check in read-user-file write-file network-connect dns-lookup spawn-process;
         bad "$check NOT blocked: $(grep "^$check" <<<"$selftest")"
     fi
 done
+missing_out="$("$BIN" --sandbox-selftest "$WORK/does-not-exist" "$WORK" 2>&1)" && missing_exit=0 || missing_exit=$?
+# A missing file fails to open even without a sandbox; it must not count as "blocked".
+(( missing_exit == 2 )) && grep -q "must be an existing" <<<"$missing_out" \
+    && ok "self-test rejects a missing file instead of reporting it blocked" \
+    || bad "self-test accepted a missing file: $missing_out"
 written=( "$WORK"/cleanpdf-selftest-*(N) )
 (( ${#written} == 0 )) && ok "no file written by the sandboxed self-test" \
     || bad "sandboxed self-test managed to write ${written[1]}"

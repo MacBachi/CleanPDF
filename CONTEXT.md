@@ -25,11 +25,14 @@ Quelldateien) · Arbeitsverzeichnis: `/Users/mb/Dev/CleanPDF`.
   im Worker): strukturelle CGPDF-Probes + Rohdaten-Scan, JBIG2-Hinweis.
 - `Sources/CleanPDF/AppUI.swift`, `Main.swift` — GUI bzw. Einstieg
   (Worker → Selbsttest → CLI → GUI).
+- `Sources/CleanPDF/HelpContent.swift` / `HelpView.swift` — eingebaute Hilfe
+  (Deutsch, „du“): Fenster mit Themen + Suche, Menü „Hilfe“ (⌘?, Direkt-
+  einstiege), „?“ im Hauptfenster, Links aus Leerzustand und Risiko-Details.
 - `Sources/CIsolation/` — C-Shim für `sandbox_init`, `proc_pid_rusage`,
   `setrlimit`.
 - `build-app.sh` — universelles Bundle (arm64 + x86_64, bricht ab, wenn eine
   Architektur fehlt), Icon, ad-hoc-Signatur. Enthält die Bundle-Version.
-- `tests/run.sh` — End-to-End-Suite (39 Checks), `tests/make_*` erzeugen die
+- `tests/run.sh` — End-to-End-Suite (40 Checks), `tests/make_*` erzeugen die
   Fixtures zur Laufzeit (keine Binär-Assets im Repo), `check_render_parity`
   vergleicht Original und Ausgabe pixelweise bei 200 dpi.
 - `tests/CleanPDFTests/` — XCTest (`swift test`), u. a. spielt einen
@@ -84,6 +87,16 @@ Quelldateien) · Arbeitsverzeichnis: `/Users/mb/Dev/CleanPDF`.
 - CI-Runner: macos-14 wurde am 2. 11. 2026 abgeschaltet; Actions auf Node-24-
   Versionen (checkout v7, action-gh-release v3, upload/download-artifact).
 - Veröffentlichte Tags werden nicht verschoben (v1.0.0 → v1.0.1 statt Umhängen).
+- Release-Tags werden signiert (SSH-Schlüssel aus 1Password, wie v1.0.x und
+  v1.1.0). Ohne entsperrtes 1Password wird nichts unsigniert veröffentlicht.
+- Hilfe als eigenes SwiftUI-Fenster statt Apple-Help-Book: Help Viewer ist
+  bei ad-hoc-signierten Apps unzuverlässig, das Fenster ist testbar. Zahlen
+  (Zeitlimit, Speicher, Megapixel, Score-Stufen, Punkte) kommen aus den
+  Konstanten im Code; Tests rendern jede Seite hell/dunkel per ImageRenderer.
+- Bundle-Sprache Deutsch (`CFBundleDevelopmentRegion de`): Die Oberfläche ist
+  deutsch; ohne die Angabe zeigte macOS die Standardmenüs englisch.
+- `--sandbox-selftest` verlangt existierende Datei und Ordner: Eine fehlende
+  Datei schlägt auch ohne Sandbox fehl und wurde als „blocked“ gewertet.
 - Unit-Tests liegen in `tests/CleanPDFTests` (klein): macOS-Dateisystem
   unterscheidet keine Groß-/Kleinschreibung, `Tests/` landete im vorhandenen
   `tests/`; Package.swift nennt den echten Pfad.

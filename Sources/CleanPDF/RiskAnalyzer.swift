@@ -13,7 +13,7 @@ import CoreGraphics
 // MARK: - Report model
 
 struct RiskFinding: Identifiable, Sendable, Codable {
-    enum Severity: Int, Comparable, Sendable, Codable {
+    enum Severity: Int, Comparable, Sendable, Codable, CaseIterable {
         case info = 0      // noteworthy, not dangerous (e.g. signature)
         case medium = 1    // external references, forms
         case high = 2      // embedded files, external file actions, multimedia
@@ -68,15 +68,20 @@ struct RiskReport: Sendable, Codable {
         min(100, findings.reduce(0) { $0 + $1.severity.points })
     }
 
-    var levelLabel: String {
-        switch score {
-        case 0: return "Unauffällig"
-        case 1..<20: return "Niedrig"
-        case 20..<40: return "Mittel"
-        case 40..<70: return "Hoch"
-        default: return "Kritisch"
-        }
+    /// Score bands and their names; also shown in the in-app help.
+    static let levelBands: [(range: ClosedRange<Int>, label: String)] = [
+        (0...0, "Unauffällig"),
+        (1...19, "Niedrig"),
+        (20...39, "Mittel"),
+        (40...69, "Hoch"),
+        (70...100, "Kritisch"),
+    ]
+
+    static func level(for score: Int) -> String {
+        levelBands.first { $0.range.contains(score) }?.label ?? "Kritisch"
     }
+
+    var levelLabel: String { Self.level(for: score) }
 
     var sortedFindings: [RiskFinding] {
         findings.sorted { $0.severity > $1.severity }

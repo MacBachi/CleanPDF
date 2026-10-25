@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Built-in help (German): **Help → CleanPDF-Hilfe** (⌘?), a **?** button in
+  the main window and links from the empty list and the risk details. Covers
+  what CleanPDF does and how (with a diagram of the isolated pipeline),
+  usage, the risk score, common questions, security limits and the command
+  line, with search. Limits and score values are taken from the code.
+
+### Changed
+- The app declares German as its language, so the standard menus (Ablage,
+  Bearbeiten, Hilfe …) match the German interface.
+- README: first-launch instructions for macOS 15 and later (Privacy &
+  Security → Open Anyway; right-click → Open no longer bypasses Gatekeeper).
+
+### Fixed
+- `--sandbox-selftest` with a missing file reported the read as "blocked";
+  it now requires an existing file and directory.
+
 ## [1.1.0] — 2026-10-25
 
 ### Security

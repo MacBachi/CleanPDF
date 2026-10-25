@@ -70,14 +70,17 @@ enum IsolationError: LocalizedError {
 /// comes back.
 enum IsolatedPDF {
 
+    static let defaultPageTimeout: TimeInterval = 120
+    static let defaultMemoryLimitMB = 3072
+
     /// Seconds without any message from the worker before it is killed.
     static var pageTimeout: TimeInterval {
-        envNumber("CLEANPDF_PAGE_TIMEOUT").map { max(1, $0) } ?? 120
+        envNumber("CLEANPDF_PAGE_TIMEOUT").map { max(1, $0) } ?? defaultPageTimeout
     }
 
     /// Physical memory ceiling for the worker.
     static var memoryLimitMB: Int {
-        envNumber("CLEANPDF_WORKER_MEMORY_MB").map { max(64, Int($0)) } ?? 3072
+        envNumber("CLEANPDF_WORKER_MEMORY_MB").map { max(64, Int($0)) } ?? defaultMemoryLimitMB
     }
 
     private static func envNumber(_ name: String) -> Double? {

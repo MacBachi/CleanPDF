@@ -248,6 +248,18 @@ extension Worker {
             print("usage: CleanPDF --sandbox-selftest <file-to-read> <dir-to-write>")
             return 2
         }
+        // A missing file or directory would fail even without a sandbox and
+        // be misread as "blocked", so both must exist before we start.
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.isReadableFile(atPath: arguments[0]) else {
+            print("error: \(arguments[0]) must be an existing, readable file")
+            return 2
+        }
+        guard FileManager.default.fileExists(atPath: arguments[1], isDirectory: &isDirectory),
+              isDirectory.boolValue, FileManager.default.isWritableFile(atPath: arguments[1]) else {
+            print("error: \(arguments[1]) must be an existing, writable directory")
+            return 2
+        }
         if let message = enterSandbox() {
             print("sandbox: UNAVAILABLE (\(message))")
             return 1

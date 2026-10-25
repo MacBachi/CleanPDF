@@ -119,8 +119,9 @@ unzip, and drag it to `/Applications`. It is a universal app (Apple silicon
 and Intel); every release is tested on both before it is published.
 
 The app is **ad-hoc signed, not notarised** (this is a free, unfunded
-project). On first launch macOS Gatekeeper will block it; open it once via
-**right-click → Open**, or run:
+project), so macOS blocks the first launch. On macOS 15 and later, open
+**System Settings → Privacy & Security** and click **Open Anyway** next to
+CleanPDF; on macOS 14, **right-click → Open** also works. Or run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/CleanPDF.app
@@ -143,6 +144,11 @@ tests with Swift 6.1 and 6.3, on Apple silicon and on Intel.
 **App:** drag PDFs onto the window (or the Dock icon). The result is written
 next to the original as `<name> (safe).pdf`. You can choose resolution
 (150 / 200 / 300 dpi) and toggle the searchable OCR layer.
+
+**Help:** the app has built-in help (German) — **Help → CleanPDF-Hilfe** or
+**⌘?**, or the **?** button in the window. It explains what CleanPDF does and
+how, walks through usage and the risk score, and answers common questions;
+it is searchable.
 
 **Command line** (same binary inside the bundle, or `.build/release/CleanPDF`):
 
@@ -207,9 +213,10 @@ swift test        # unit tests
 
 - **Unit tests** play a compromised worker: crafted bytes are pushed through
   a real pipe into the app's validation (out-of-budget sizes, NaN, wrong page
-  order, truncated data, oversized messages) — plus the render budget and
-  report handling.
-- **End-to-end suite** (39 checks): hostile-PDF detection, false-positive
+  order, truncated data, oversized messages) — plus the render budget,
+  report handling, and the built-in help (content, search, and every page
+  rendered off-screen in light and dark mode).
+- **End-to-end suite** (40 checks): hostile-PDF detection, false-positive
   guards, sanitisation with an independent deep scan of the output, that the
   sandbox blocks file access, network, DNS and process launch (each with a
   control run proving the operation works outside it), that processing is
@@ -260,10 +267,15 @@ was das Original enthielt — inklusive gefundener URLs und JavaScript-Code.
 **Installieren:** Fertige App (Apple Silicon und Intel) unter
 [Releases](https://github.com/MacBachi/CleanPDF/releases/latest) laden, oder
 selbst bauen mit `./build-app.sh`. Die App ist ad-hoc signiert, nicht notarisiert
-— beim ersten Start per Rechtsklick → Öffnen starten.
+— beim ersten Start unter **Systemeinstellungen → Datenschutz & Sicherheit →
+„Dennoch öffnen“** freigeben (unter macOS 14 auch per Rechtsklick → Öffnen).
 
 **Benutzung:** PDF ins Fenster ziehen; Ergebnis landet als `<Name> (safe).pdf`
 daneben. Kommandozeile: `CleanPDF [--scan] [--dpi N] [--no-ocr] datei.pdf …`.
+
+**Hilfe:** In der App unter **Hilfe → CleanPDF-Hilfe** (⌘?) oder über das **?**
+im Fenster — mit Erklärung, wie CleanPDF arbeitet, Bedienung, Risiko-Score,
+häufigen Fragen und Suche.
 
 **Ehrlicher Hinweis:** Die Abschottung ist eine Prozess-Sandbox, keine VM. Ein
 Angriff, der die PDF-Engine *und* zusätzlich den macOS-Kernel überwindet, liegt

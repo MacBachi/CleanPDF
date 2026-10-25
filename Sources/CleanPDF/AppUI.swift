@@ -152,6 +152,12 @@ struct CleanPDFApp: App {
                 .frame(minWidth: 520, minHeight: 420)
         }
         .windowResizability(.contentSize)
+        .commands { HelpCommands() }
+
+        Window("CleanPDF-Hilfe", id: HelpNavigator.windowID) {
+            HelpView()
+        }
+        .defaultSize(width: 920, height: 660)
     }
 }
 
@@ -159,6 +165,7 @@ struct CleanPDFApp: App {
 
 struct ContentView: View {
     @ObservedObject private var queue = JobQueue.shared
+    @Environment(\.openWindow) private var openWindow
     @State private var isDropTargeted = false
     @State private var showingImporter = false
 
@@ -173,6 +180,7 @@ struct ContentView: View {
                 Spacer()
                 Text("Noch keine Dateien.")
                     .foregroundStyle(.secondary)
+                    .helpButton("Neu hier? So funktioniert CleanPDF", topic: .howItWorks)
                 Spacer()
             } else {
                 List(queue.jobs) { job in
@@ -242,6 +250,9 @@ struct ContentView: View {
 
             Button("Liste leeren") { queue.clearFinished() }
                 .disabled(queue.jobs.isEmpty)
+
+            HelpLink { OpenHelp(openWindow: openWindow)(.usage) }
+                .help("CleanPDF-Hilfe (⌘?)")
         }
         .font(.callout)
     }
@@ -363,6 +374,15 @@ struct JobRow: View {
 
 // MARK: - Risk views
 
+func severityColor(_ severity: RiskFinding.Severity) -> Color {
+    switch severity {
+    case .info: return .blue
+    case .medium: return .yellow
+    case .high: return .orange
+    case .critical: return .red
+    }
+}
+
 func riskColor(score: Int) -> Color {
     switch score {
     case 0: return .green
@@ -438,6 +458,7 @@ struct RiskDetailList: View {
                     }
                 }
             }
+            .helpButton("Was bedeuten diese Angaben?", topic: .riskScore)
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -445,12 +466,4 @@ struct RiskDetailList: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
     }
 
-    private func severityColor(_ severity: RiskFinding.Severity) -> Color {
-        switch severity {
-        case .info: return .blue
-        case .medium: return .yellow
-        case .high: return .orange
-        case .critical: return .red
-        }
-    }
 }

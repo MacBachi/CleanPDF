@@ -30,6 +30,8 @@ also uses Python 3, `sips` and `sandbox-exec`, all of which ship with macOS.
 | `Sources/CleanPDF/Sanitizer.swift` | Builds the new PDF from validated pixels; render budget; OCR layer |
 | `Sources/CleanPDF/RiskAnalyzer.swift` | Risk score (structural probes + raw-byte safety net); runs inside the worker |
 | `Sources/CleanPDF/AppUI.swift` | SwiftUI GUI, job queue, risk badges |
+| `Sources/CleanPDF/HelpContent.swift` | In-app help text (German); numbers come from the code's constants |
+| `Sources/CleanPDF/HelpView.swift` | Help window, Help menu, deep links into help |
 | `Sources/CleanPDF/Main.swift` | Entry point: worker, self-test, CLI or GUI |
 | `Sources/CIsolation/` | Small C shim for `sandbox_init`, process memory and resource limits |
 | `build-app.sh` | Builds the universal, ad-hoc signed `.app` bundle with icon |
@@ -53,6 +55,9 @@ also uses Python 3, `sips` and `sandbox-exec`, all of which ship with macOS.
   against a deliberately broken build once.
 - **Be honest in the UI and docs.** If something is a heuristic (like the risk
   score), say so; don't imply a guarantee the code doesn't provide.
+- **Keep the in-app help in step.** When behaviour changes, update
+  `HelpContent.swift`; quote limits through the code's constants, never as
+  typed-in numbers.
 - Match the existing code style. Keep comments about *why*, not *what*.
 
 ## Submitting changes
