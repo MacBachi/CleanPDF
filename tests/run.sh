@@ -1,9 +1,10 @@
 #!/bin/zsh
 # End-to-end test suite for CleanPDF.
 #
-# Builds the release binary, then exercises the sanitizer and the risk
-# analyzer against crafted PDFs and asserts on the results. Pure shell +
-# Python 3 (stdlib only), so it runs locally and in CI without extra deps.
+# Builds the release binary, then exercises the sanitizer, the risk analyzer
+# and the sandboxed worker against crafted PDFs and asserts on the results.
+# Needs only what ships with macOS + Xcode (zsh, Python 3 stdlib, swift,
+# sips, sandbox-exec), so it runs locally and in CI without extra deps.
 #
 # Exit code 0 = all tests passed.
 set -euo pipefail
@@ -33,6 +34,12 @@ python3 tests/make_evil_pdf.py "$WORK/evil.pdf"          >/dev/null
 python3 tests/make_binary_stream_pdf.py "$WORK/binfp.pdf" >/dev/null
 python3 tests/make_huge_page_pdf.py "$WORK/huge.pdf"      >/dev/null
 python3 tests/make_jbig2_pdf.py "$WORK/jbig2.pdf"         >/dev/null
+python3 tests/make_jpx_pdf.py "$WORK/jpx.pdf"             >/dev/null
+python3 tests/make_slow_page_pdf.py "$WORK/slow.pdf" 2000 >/dev/null
+python3 tests/make_slow_page_pdf.py "$WORK/slowbig.pdf" 400 14400 >/dev/null
+swift tests/make_rich_pdf.swift "$WORK/rich.pdf"   >/dev/null 2>&1
+# Compiled with optimisation: the pixel comparison is too slow interpreted.
+swiftc -O tests/check_render_parity.swift -o "$WORK/parity" 2>/dev/null
 
 # --- Test 1: hostile PDF scores critical, lists the threats ---------------
 print -P "%F{cyan}==>%f Risk analysis"
@@ -91,6 +98,85 @@ grep -q "Seiten: 1, 2$" <<<"$scan_jb" && ok "direct and form-nested images found
 jb_out="$("$BIN" "$WORK/jbig2.pdf" 2>/dev/null || true)"
 grep -q "Ausgabe geprüft" <<<"$jb_out" && ok "undecodable JBIG2 data does not stop sanitization" \
     || bad "sanitizing broken JBIG2 failed"
+
+# --- Test 9: the worker sandbox really blocks what it must ----------------
+print -P "%F{cyan}==>%f Sandbox isolation"
+echo "secret" > "$WORK/secret.txt"
+# Control: the same operations must work *outside* the sandbox here, or a
+# "blocked" result below would prove nothing.
+control="$(python3 -I - "$WORK/secret.txt" "$WORK" <<'PY'
+import os, socket, subprocess, sys
+def attempt(name, fn):
+    try:
+        fn(); print(f"{name}: possible")
+    except PermissionError:
+        print(f"{name}: unavailable")
+    except OSError:
+        print(f"{name}: possible")   # e.g. ECONNREFUSED: the attempt was made
+attempt("read-user-file", lambda: open(sys.argv[1]).read())
+attempt("write-file", lambda: open(os.path.join(sys.argv[2], "control.txt"), "w").write("x"))
+attempt("network-connect", lambda: socket.create_connection(("127.0.0.1", 9), timeout=2))
+attempt("spawn-process", lambda: subprocess.run(["/usr/bin/true"], check=True))
+try:
+    socket.getaddrinfo("example.com", 80); print("dns-lookup: possible")
+except OSError:
+    print("dns-lookup: unavailable")
+PY
+)"
+selftest="$("$BIN" --sandbox-selftest "$WORK/secret.txt" "$WORK" || true)"
+for check in read-user-file write-file network-connect dns-lookup spawn-process; do
+    if grep -q "^$check: blocked" <<<"$selftest"; then
+        if grep -q "^$check: possible" <<<"$control"; then
+            ok "$check blocked in sandbox (control: possible outside)"
+        else
+            print -P "%F{yellow}  ~%f $check blocked, but also unavailable outside the sandbox here (inconclusive)"
+        fi
+    else
+        bad "$check NOT blocked: $(grep "^$check" <<<"$selftest")"
+    fi
+done
+written=( "$WORK"/cleanpdf-selftest-*(N) )
+(( ${#written} == 0 )) && ok "no file written by the sandboxed self-test" \
+    || bad "sandboxed self-test managed to write ${written[1]}"
+
+# --- Test 10: fail closed when the sandbox cannot be applied --------------
+# A process that is already sandboxed cannot apply another profile, so a
+# worker started under sandbox-exec must refuse instead of parsing unprotected.
+print -P "%F{cyan}==>%f Fail closed"
+cp "$WORK/evil.pdf" "$WORK/fc.pdf"
+fc_out="$(sandbox-exec -p '(version 1) (allow default)' "$BIN" --no-ocr "$WORK/fc.pdf" 2>&1 || true)"
+grep -q "Sandbox nicht verfügbar" <<<"$fc_out" && ok "worker refuses without its sandbox" \
+    || bad "no refusal without sandbox: $fc_out"
+[[ ! -e "$WORK/fc (safe).pdf" ]] && ok "no output produced without sandbox" || bad "output produced without sandbox"
+
+# --- Test 11: output looks like the original (sandbox didn't break drawing) -
+print -P "%F{cyan}==>%f Render parity"
+for name in evil rich jpx; do
+    [[ -e "$WORK/$name (safe).pdf" ]] || "$BIN" --no-ocr "$WORK/$name.pdf" >/dev/null 2>&1 || true
+    par="$("$WORK/parity" "$WORK/$name.pdf" "$WORK/$name (safe).pdf" 2>/dev/null || true)"
+    worst=$(grep -o "worst block [0-9.]*" <<<"$par" | awk '{print $3}' | sort -n | tail -1)
+    [[ "$(tail -1 <<<"$par")" == "PARITY_OK" ]] && ok "$name.pdf matches original (worst block ${worst})" \
+        || bad "$name.pdf differs from original: $(grep -v ' ok$' <<<"$par" | head -3)"
+done
+
+# --- Test 12: watchdog kills a worker that stalls on a page ---------------
+print -P "%F{cyan}==>%f Worker watchdog"
+t0=$SECONDS
+slow_out="$(CLEANPDF_PAGE_TIMEOUT=2 "$BIN" --no-ocr "$WORK/slow.pdf" 2>&1 || true)"
+elapsed=$((SECONDS - t0))
+grep -q "Zeitüberschreitung bei Seite 2" <<<"$slow_out" && ok "page 2 timed out" || bad "no timeout: $slow_out"
+(( elapsed < 20 )) && ok "aborted after ${elapsed}s (page alone takes far longer)" || bad "took ${elapsed}s"
+[[ ! -e "$WORK/slow (safe).pdf" ]] && ok "partial output removed" || bad "partial output left behind"
+
+# --- Test 13: memory ceiling ----------------------------------------------
+# The watchdog samples memory twice a second, so it targets sustained growth
+# (decompression bombs), not brief spikes. This page holds a ~200 MB bitmap
+# while it renders for a long time, well above a 100 MB ceiling.
+mem_out="$(CLEANPDF_WORKER_MEMORY_MB=100 CLEANPDF_PAGE_TIMEOUT=60 "$BIN" --no-ocr "$WORK/slowbig.pdf" 2>&1 || true)"
+grep -q "Speichergrenze (100 MB) bei Seite 2" <<<"$mem_out" && ok "worker killed at memory ceiling" \
+    || bad "no memory kill: $mem_out"
+[[ ! -e "$WORK/slowbig (safe).pdf" ]] && ok "partial output removed after memory kill" \
+    || bad "partial output left after memory kill"
 
 print ""
 print -P "%F{cyan}==>%f $pass passed, $fail failed"

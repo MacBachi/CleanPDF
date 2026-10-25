@@ -28,7 +28,10 @@ jobs:
       - name: Build (release)
         run: swift build -c release
 
-      - name: Run test suite
+      - name: Unit tests
+        run: swift test
+
+      - name: End-to-end test suite
         run: ./tests/run.sh
 
       - name: Build app bundle

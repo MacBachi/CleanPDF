@@ -53,7 +53,7 @@ final class JobQueue: ObservableObject {
             jobs.append(job)
             let jobID = job.id
             Task.detached(priority: .userInitiated) {
-                let report = RiskAnalyzer.analyze(url: url)
+                let report = IsolatedPDF.analyzeReport(input: url)
                 await MainActor.run {
                     JobQueue.shared.jobs.first(where: { $0.id == jobID })?.report = report
                 }
@@ -90,7 +90,7 @@ final class JobQueue: ObservableObject {
                         JobQueue.shared.update(jobID: jobID, status: .running(page: page, of: count))
                     }
                 }
-                let verification = RiskAnalyzer.analyze(url: output)
+                let verification = IsolatedPDF.analyzeReport(input: output)
                 await MainActor.run {
                     JobQueue.shared.jobs.first(where: { $0.id == jobID })?.outputReport = verification
                     JobQueue.shared.update(jobID: jobID, status: .done(output: output, downscaledPages: result.downscaledPages))

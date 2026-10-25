@@ -12,8 +12,8 @@ import CoreGraphics
 
 // MARK: - Report model
 
-struct RiskFinding: Identifiable, Sendable {
-    enum Severity: Int, Comparable, Sendable {
+struct RiskFinding: Identifiable, Sendable, Codable {
+    enum Severity: Int, Comparable, Sendable, Codable {
         case info = 0      // noteworthy, not dangerous (e.g. signature)
         case medium = 1    // external references, forms
         case high = 2      // embedded files, external file actions, multimedia
@@ -44,10 +44,24 @@ struct RiskFinding: Identifiable, Sendable {
     var severity: Severity
     var title: String
     var details: [String] = []
+
+    // `id` is a local identity for SwiftUI lists, not part of the report.
+    private enum CodingKeys: String, CodingKey { case severity, title, details }
 }
 
-struct RiskReport: Sendable {
+struct RiskReport: Sendable, Codable {
     var findings: [RiskFinding]
+
+    /// Bounds a report received from the worker so a hostile document can't
+    /// flood the UI. Text comes from the PDF and is displayed as plain text.
+    mutating func clampForDisplay() {
+        findings = Array(findings.prefix(200)).map { finding in
+            var f = finding
+            f.title = String(f.title.prefix(300))
+            f.details = f.details.prefix(150).map { String($0.prefix(2000)) }
+            return f
+        }
+    }
 
     /// 0–100, capped sum of finding points, sorted by severity.
     var score: Int {
@@ -84,11 +98,14 @@ struct RiskReport: Sendable {
 ///    since they can be inactive leftovers.
 enum RiskAnalyzer {
 
-    static func analyze(url: URL) -> RiskReport {
+    /// Analyzes PDF bytes. Called inside the sandboxed worker; the parent
+    /// uses `IsolatedPDF.analyze(input:)`.
+    static func analyze(data: Data) -> RiskReport {
         var findings: [RiskFinding] = []
         var structuralMarkers = Set<String>()
 
-        if let doc = CGPDFDocument(url as CFURL) {
+        if let provider = CGDataProvider(data: data as CFData),
+           let doc = CGPDFDocument(provider) {
             if doc.isEncrypted {
                 findings.append(RiskFinding(
                     severity: .info,
@@ -104,7 +121,7 @@ enum RiskAnalyzer {
             ))
         }
 
-        rawScan(url: url, structuralMarkers: structuralMarkers, findings: &findings)
+        rawScan(data: data, structuralMarkers: structuralMarkers, findings: &findings)
         return RiskReport(findings: findings)
     }
 
@@ -335,6 +352,7 @@ enum RiskAnalyzer {
                 details: [
                     "Seiten: \(pages)",
                     "Kein aktiver Inhalt. Der JBIG2-Decoder war aber Angriffsweg des Exploits FORCEDENTRY (2021).",
+                    "CleanPDF dekodiert ihn nur im abgeschotteten Hilfsprozess ohne Netz- und Dateizugriff.",
                 ]
             ))
         }
@@ -586,11 +604,10 @@ enum RiskAnalyzer {
     /// dictionaries outside streams; active content hidden inside compressed
     /// object streams is covered by the structural scan, which parses them.
     private static func rawScan(
-        url: URL,
+        data raw: Data,
         structuralMarkers: Set<String>,
         findings: inout [RiskFinding]
     ) {
-        guard let raw = try? Data(contentsOf: url, options: .mappedIfSafe) else { return }
         let data = strippedOfStreamContents(raw)
 
         let rawMarkers: [(String, RiskFinding.Severity, String)] = [

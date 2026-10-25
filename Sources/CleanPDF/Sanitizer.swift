@@ -59,33 +59,27 @@ struct SanitizeResult: Sendable {
 }
 
 enum SanitizeError: LocalizedError {
-    case cannotOpen
-    case encrypted
-    case noPages
     case cannotCreateOutput
-    case renderFailed(page: Int)
+    case encodingFailed(page: Int)
 
     var errorDescription: String? {
         switch self {
-        case .cannotOpen: return "Datei konnte nicht als PDF geöffnet werden."
-        case .encrypted: return "PDF ist passwortgeschützt. Bitte zuerst entsperren (z. B. in Vorschau exportieren)."
-        case .noPages: return "PDF enthält keine Seiten."
         case .cannotCreateOutput: return "Ausgabedatei konnte nicht erstellt werden."
-        case .renderFailed(let page): return "Seite \(page) konnte nicht gerendert werden."
+        case .encodingFailed(let page): return "Seite \(page) konnte nicht kodiert werden."
         }
     }
 }
 
-/// Rebuilds a PDF from scratch by rasterizing every page.
+/// Rebuilds a PDF from scratch out of rendered page pixels.
 ///
-/// Security model: the output PDF is constructed fresh by CoreGraphics and
-/// contains ONLY page-sized images (plus, optionally, invisible drawn text
-/// from local OCR). Nothing from the source file's object structure is
-/// copied over — no JavaScript, no actions (OpenAction/AA/Launch), no
-/// annotations or links, no embedded/attached files, no forms (AcroForm/XFA),
-/// no digital signatures or certificates, no metadata, no external references.
-/// Rendering itself uses CGPDFDocument, a pure rasterizer that executes no
-/// scripts and performs no network access.
+/// Security model: the untrusted PDF is parsed and rendered only inside the
+/// sandboxed worker (see Worker.swift and IsolatedPDF.swift), which can send
+/// back nothing but page sizes and raw pixels. This side builds a brand-new
+/// PDF from those pixels with CoreGraphics: page-sized JPEG images plus,
+/// optionally, invisible drawn text from local OCR. Nothing from the source
+/// file's object structure reaches the output — no JavaScript, no actions,
+/// no annotations or links, no attachments, no forms, no signatures, no
+/// metadata, no external references.
 enum Sanitizer {
 
     /// Sanitize `input` into `output`. Reports progress as (currentPage, pageCount).
@@ -95,114 +89,47 @@ enum Sanitizer {
         options: SanitizeOptions = SanitizeOptions(),
         progress: (@Sendable (Int, Int) -> Void)? = nil
     ) throws -> SanitizeResult {
-        guard let doc = CGPDFDocument(input as CFURL) else {
-            throw SanitizeError.cannotOpen
-        }
-        if doc.isEncrypted && !doc.unlockWithPassword("") {
-            throw SanitizeError.encrypted
-        }
-        let pageCount = doc.numberOfPages
-        guard pageCount > 0, let firstPage = doc.page(at: 1) else {
-            throw SanitizeError.noPages
-        }
+        var result = SanitizeResult(pageCount: 0)
+        var pdfContext: CGContext?
 
-        var defaultBox = pageBoxSize(of: firstPage)
-        // Deliberately minimal document info: nothing is carried over from the source.
-        let pdfInfo: [CFString: Any] = [kCGPDFContextCreator: "CleanPDF"]
-        guard let pdfContext = CGContext(output as CFURL, mediaBox: &defaultBox, pdfInfo as CFDictionary) else {
-            throw SanitizeError.cannotCreateOutput
+        do {
+            try IsolatedPDF.render(input: input, dpi: options.dpi, onPageCount: { count in
+                result.pageCount = count
+                progress?(1, count)
+            }, onPage: { frame in
+                var pageBox = CGRect(origin: .zero, size: frame.pointSize)
+                if pdfContext == nil {
+                    // Deliberately minimal document info: nothing from the source.
+                    let info: [CFString: Any] = [kCGPDFContextCreator: "CleanPDF"]
+                    pdfContext = CGContext(output as CFURL, mediaBox: &pageBox, info as CFDictionary)
+                }
+                guard let context = pdfContext else { throw SanitizeError.cannotCreateOutput }
+                guard let jpeg = jpegBackedImage(from: frame.image, quality: options.jpegQuality) else {
+                    throw SanitizeError.encodingFailed(page: frame.pageNumber)
+                }
+                if frame.downscaled {
+                    result.downscaledPages.append(frame.pageNumber)
+                }
+
+                let boxData = Data(bytes: &pageBox, count: MemoryLayout<CGRect>.size)
+                context.beginPDFPage([kCGPDFContextMediaBox: boxData] as CFDictionary)
+                context.draw(jpeg, in: pageBox)
+                if options.ocr {
+                    drawInvisibleTextLayer(from: frame.image, into: context,
+                                           pageBox: pageBox, languages: options.ocrLanguages)
+                }
+                context.endPDFPage()
+                if frame.pageNumber < result.pageCount {
+                    progress?(frame.pageNumber + 1, result.pageCount)
+                }
+            })
+        } catch {
+            pdfContext?.closePDF()
+            try? FileManager.default.removeItem(at: output)
+            throw error
         }
-
-        var result = SanitizeResult(pageCount: pageCount)
-        for pageNumber in 1...pageCount {
-            progress?(pageNumber, pageCount)
-            guard let page = doc.page(at: pageNumber) else { continue }
-
-            let pageBox = pageBoxSize(of: page)
-            guard let rendered = renderPage(page, pointSize: pageBox.size, options: options) else {
-                pdfContext.closePDF()
-                try? FileManager.default.removeItem(at: output)
-                throw SanitizeError.renderFailed(page: pageNumber)
-            }
-
-            var mediaBox = pageBox
-            let boxData = Data(bytes: &mediaBox, count: MemoryLayout<CGRect>.size)
-            let pageInfo: [CFString: Any] = [kCGPDFContextMediaBox: boxData]
-            pdfContext.beginPDFPage(pageInfo as CFDictionary)
-            if rendered.downscaled {
-                result.downscaledPages.append(pageNumber)
-            }
-            pdfContext.draw(rendered.image, in: pageBox)
-            if options.ocr {
-                drawInvisibleTextLayer(
-                    from: rendered.image,
-                    into: pdfContext,
-                    pageBox: pageBox,
-                    languages: options.ocrLanguages
-                )
-            }
-            pdfContext.endPDFPage()
-        }
-        pdfContext.closePDF()
+        pdfContext?.closePDF()
         return result
-    }
-
-    /// Effective page rectangle in points, normalized to origin zero and
-    /// accounting for the page's /Rotate entry.
-    private static func pageBoxSize(of page: CGPDFPage) -> CGRect {
-        let crop = page.getBoxRect(.cropBox)
-        let rotated = abs(page.rotationAngle) % 180 == 90
-        let width = rotated ? crop.height : crop.width
-        let height = rotated ? crop.width : crop.height
-        return CGRect(x: 0, y: 0, width: width, height: height)
-    }
-
-    private struct RenderedPage {
-        /// JPEG-backed CGImage; Quartz embeds the JPEG data directly (DCTDecode).
-        var image: CGImage
-        /// True when the render budget forced a lower resolution than requested.
-        var downscaled: Bool
-    }
-
-    private static func renderPage(_ page: CGPDFPage, pointSize: CGSize, options: SanitizeOptions) -> RenderedPage? {
-        guard let scale = RenderBudget.scale(for: pointSize, dpi: options.dpi) else { return nil }
-        // Small tolerance so float rounding at exactly the requested dpi isn't
-        // reported as a downscale.
-        let downscaled = scale < options.dpi / 72.0 * 0.999
-        let pixelWidth = max(1, Int((pointSize.width * scale).rounded()))
-        let pixelHeight = max(1, Int((pointSize.height * scale).rounded()))
-
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-              let bitmap = CGContext(
-                data: nil,
-                width: pixelWidth,
-                height: pixelHeight,
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: colorSpace,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              )
-        else { return nil }
-
-        let pixelRect = CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight)
-        bitmap.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-        bitmap.fill(pixelRect)
-        bitmap.interpolationQuality = .high
-        bitmap.saveGState()
-        // getDrawingTransform never scales UP, so it must not be handed the
-        // (larger) pixel rect — that would draw the page 1:1, centered on a
-        // mostly blank bitmap. Apply the dpi scale ourselves, then let the
-        // transform handle only rotation and crop-box origin at 1:1 point size.
-        bitmap.scaleBy(x: scale, y: scale)
-        let pointRect = CGRect(x: 0, y: 0, width: pointSize.width, height: pointSize.height)
-        bitmap.concatenate(page.getDrawingTransform(.cropBox, rect: pointRect, rotate: 0, preserveAspectRatio: true))
-        bitmap.drawPDFPage(page)
-        bitmap.restoreGState()
-
-        guard let raw = bitmap.makeImage(),
-              let jpegBacked = jpegBackedImage(from: raw, quality: options.jpegQuality)
-        else { return nil }
-        return RenderedPage(image: jpegBacked, downscaled: downscaled)
     }
 
     /// Re-encode as JPEG and wrap the JPEG data in a CGImage so the PDF
@@ -291,6 +218,7 @@ enum Sanitizer {
         context.restoreGState()
     }
 }
+
 /// Human-readable note for pages rendered below the requested resolution.
 func downscaleNote(_ pages: [Int]) -> String {
     let list = pages.prefix(10).map(String.init).joined(separator: ", ")

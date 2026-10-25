@@ -13,11 +13,26 @@ import Foundation
 /// without arguments the SwiftUI app starts.
 ///
 /// CLI usage:
-///   CleanPDF [--dpi N] [--no-ocr] [--output <dir>] file.pdf [more.pdf ...]
+///   CleanPDF [--scan] [--dpi N] [--no-ocr] [--output <dir>] file.pdf [more.pdf ...]
+///   CleanPDF --sandbox-selftest <file-to-read> <dir-to-write>
+///
+/// Internally the same binary also serves as the sandboxed worker
+/// (`--worker ...`), which must be dispatched before anything else runs.
 @main
 struct Entry {
     static func main() {
-        var args = Array(CommandLine.arguments.dropFirst())
+        // A worker that dies must surface as an error, not kill the parent.
+        signal(SIGPIPE, SIG_IGN)
+
+        let raw = Array(CommandLine.arguments.dropFirst())
+        if raw.first == "--worker" {
+            exit(Worker.main(arguments: Array(raw.dropFirst())))
+        }
+        if raw.first == "--sandbox-selftest" {
+            exit(Worker.selfTest(arguments: Array(raw.dropFirst())))
+        }
+
+        var args = raw
         // macOS may pass process serial numbers / AppKit flags when launched
         // from Finder; those must not trigger CLI mode.
         args.removeAll { $0.hasPrefix("-psn_") || $0.hasPrefix("-NS") || $0.hasPrefix("-Apple") }
@@ -59,7 +74,10 @@ struct Entry {
                 outputDir = URL(fileURLWithPath: args[index], isDirectory: true)
             case "--help", "-h":
                 print("Usage: CleanPDF [--scan] [--dpi N] [--no-ocr] [--output <dir>] file.pdf [more.pdf ...]")
+                print("       CleanPDF --sandbox-selftest <datei-zum-lesen> <ordner-zum-schreiben>")
                 print("  --scan    nur Risiko-Analyse ausgeben, nichts bereinigen")
+                print("  --sandbox-selftest  prüft, dass der Hilfsprozess Netz, Dateien und")
+                print("                      Programmstarts tatsächlich nicht erreichen kann")
                 return 0
             default:
                 inputs.append(URL(fileURLWithPath: arg))
@@ -75,7 +93,7 @@ struct Entry {
         var failures = 0
         var maxScore = 0
         for input in inputs {
-            let report = RiskAnalyzer.analyze(url: input)
+            let report = IsolatedPDF.analyzeReport(input: input)
             maxScore = max(maxScore, report.score)
             printReport(report, file: input.lastPathComponent)
 
@@ -91,7 +109,7 @@ struct Entry {
                 let result = try Sanitizer.sanitize(input: input, output: output, options: options) { page, count in
                     FileHandle.standardError.write(Data("\(input.lastPathComponent): Seite \(page)/\(count)\n".utf8))
                 }
-                let verification = RiskAnalyzer.analyze(url: output)
+                let verification = IsolatedPDF.analyzeReport(input: output)
                 if verification.score == 0 {
                     print("OK  \(output.path)  [Ausgabe geprüft: keine aktiven Elemente]")
                     if !result.downscaledPages.isEmpty {
