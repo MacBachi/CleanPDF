@@ -10,34 +10,47 @@ that keep it simple, safe, and honest are very welcome.
 git clone https://github.com/MacBachi/CleanPDF.git
 cd CleanPDF
 swift build            # debug build
-./build-app.sh         # full CleanPDF.app bundle
+swift test             # unit tests
 ./tests/run.sh         # end-to-end test suite
+./build-app.sh         # universal CleanPDF.app bundle
 ```
 
-You need a Swift 5.9+ toolchain (Xcode 15 or newer) on macOS 14 or newer —
-CI builds with Swift 5.10, so please keep the code buildable there rather
-than relying on newer language modes. The test suite additionally uses
-Python 3, which ships with macOS.
+You need Swift 6.1 or newer (Xcode 16.3+) on macOS 14 or newer. CI runs on
+the oldest and newest supported GitHub macOS images (Swift 6.1 and 6.3) and on
+Intel hardware, so please keep the code building there. The end-to-end suite
+also uses Python 3, `sips` and `sandbox-exec`, all of which ship with macOS.
 
 ## Project layout
 
 | Path | What it is |
 |---|---|
-| `Sources/CleanPDF/Sanitizer.swift` | Core: render each page → JPEG → new PDF, optional invisible OCR layer |
-| `Sources/CleanPDF/RiskAnalyzer.swift` | Risk score (structural probes + raw-byte safety net) |
+| `Sources/CleanPDF/Worker.swift` | The sandboxed worker: sandbox profile, page rendering, analysis, `--sandbox-selftest` |
+| `Sources/CleanPDF/IsolatedPDF.swift` | App side of the boundary: starts workers, validates everything they send, watchdog |
+| `Sources/CleanPDF/WorkerProtocol.swift` | Binary wire format between worker and app |
+| `Sources/CleanPDF/Sanitizer.swift` | Builds the new PDF from validated pixels; render budget; OCR layer |
+| `Sources/CleanPDF/RiskAnalyzer.swift` | Risk score (structural probes + raw-byte safety net); runs inside the worker |
 | `Sources/CleanPDF/AppUI.swift` | SwiftUI GUI, job queue, risk badges |
-| `Sources/CleanPDF/Main.swift` | Entry point; CLI when given file args, GUI otherwise |
-| `build-app.sh` | Builds the signed `.app` bundle with icon |
+| `Sources/CleanPDF/Main.swift` | Entry point: worker, self-test, CLI or GUI |
+| `Sources/CIsolation/` | Small C shim for `sandbox_init`, process memory and resource limits |
+| `build-app.sh` | Builds the universal, ad-hoc signed `.app` bundle with icon |
 | `assets/generate_icon.swift` | Regenerates the app icon programmatically |
-| `tests/` | Fixture generators + `run.sh` end-to-end suite |
+| `tests/CleanPDFTests/` | XCTest unit tests (`swift test`) |
+| `tests/run.sh` | End-to-end suite; `tests/make_*` generate its fixtures |
 
 ## Guidelines
 
-- **Never weaken the safety guarantee.** The output must stay a
+- **Never parse an untrusted PDF outside the worker.** No `CGPDFDocument`,
+  `PDFDocument` or similar on user input in the app process — route it
+  through `IsolatedPDF`. The app may only handle validated pixels.
+- **Never weaken the output guarantee.** The output must stay a
   rasterise-and-rebuild — don't add code paths that copy structure from the
   untrusted source into the output.
-- **Add a test** for any behaviour change in the sanitizer or analyzer.
-  `tests/run.sh` must stay green.
+- **Loosen the sandbox profile only with evidence.** If a sandbox rule breaks
+  rendering, show it with a failing parity test or sandbox log, allow the
+  narrowest path that fixes it, and say why in a comment.
+- **Add a test** for any behaviour change. `swift test` and `tests/run.sh`
+  must stay green. A test that can't fail proves nothing — check new tests
+  against a deliberately broken build once.
 - **Be honest in the UI and docs.** If something is a heuristic (like the risk
   score), say so; don't imply a guarantee the code doesn't provide.
 - Match the existing code style. Keep comments about *why*, not *what*.
@@ -45,15 +58,20 @@ Python 3, which ships with macOS.
 ## Submitting changes
 
 1. Fork and create a feature branch.
-2. Make your change; run `./tests/run.sh`.
+2. Make your change; run `swift test` and `./tests/run.sh`.
 3. Open a pull request describing what and why.
 
 By contributing, you agree that your contributions are licensed under the
 project's [GPLv3](LICENSE).
 
+## Releases
+
+Push a `vX.Y.Z` tag. The release workflow builds the universal app once, runs
+the full test suite against that exact zip on Intel and Apple silicon, and
+only then publishes it. Running the workflow manually is a dry run that skips
+publishing. Keep the bundle version in `build-app.sh` and `CHANGELOG.md` in
+step with the tag.
+
 ## Reporting security issues
 
-If you find a way for active content to survive sanitisation, please open an
-issue (or, if you consider it sensitive, contact the maintainer privately
-first). A reproducer PDF is worth a thousand words — `tests/make_evil_pdf.py`
-is a good template.
+See [SECURITY.md](SECURITY.md).
