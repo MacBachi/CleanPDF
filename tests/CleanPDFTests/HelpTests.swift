@@ -8,6 +8,7 @@
 // the GNU General Public License <https://www.gnu.org/licenses/> for details.
 
 import XCTest
+import Metal
 import SwiftUI
 import ImageIO
 import UniformTypeIdentifiers
@@ -77,7 +78,20 @@ final class HelpContentTests: XCTestCase {
 @MainActor
 final class HelpRenderingTests: XCTestCase {
 
+    /// ImageRenderer needs a real GPU. CI's Intel runner is a VM with a
+    /// paravirtual Metal device, on which Metal aborts the process ("Target
+    /// device architecture is nil"); skip there, visibly, rather than crash.
+    private func requireRealGPU() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("no Metal device")
+        }
+        if device.name.localizedCaseInsensitiveContains("paravirtual") || device.architecture.name.isEmpty {
+            throw XCTSkip("virtual GPU (\(device.name)) cannot render off-screen")
+        }
+    }
+
     func testEveryPageRendersInLightAndDarkMode() throws {
+        try requireRealGPU()
         let dir = ProcessInfo.processInfo.environment["HELP_SNAPSHOT_DIR"]
         for topic in HelpContent.topics {
             for scheme in [ColorScheme.light, .dark] {
