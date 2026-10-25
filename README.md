@@ -5,7 +5,7 @@
 **Turn untrusted PDFs into guaranteed-passive, safe PDFs — on your Mac, offline.**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20silicon%20%2B%20Intel-lightgrey.svg)](#requirements)
+[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20silicon-lightgrey.svg)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-6.1%2B-orange.svg)](https://swift.org)
 [![CI](https://github.com/MacBachi/CleanPDF/actions/workflows/ci.yml/badge.svg)](https://github.com/MacBachi/CleanPDF/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/MacBachi/CleanPDF?include_prereleases&sort=semver)](https://github.com/MacBachi/CleanPDF/releases/latest)
@@ -115,8 +115,8 @@ decoder was the attack path of the FORCEDENTRY exploit.
 
 Grab the latest `CleanPDF.app` from the
 [**Releases**](https://github.com/MacBachi/CleanPDF/releases/latest) page,
-unzip, and drag it to `/Applications`. It is a universal app (Apple silicon
-and Intel); every release is tested on both before it is published.
+unzip, and drag it to `/Applications`. CleanPDF runs on Apple silicon Macs
+only; every release is tested before it is published.
 
 The app is **ad-hoc signed, not notarised** (this is a free, unfunded
 project), so macOS blocks the first launch. On macOS 15 and later, open
@@ -137,7 +137,7 @@ cp -R build/CleanPDF.app /Applications/
 ```
 
 Requires Swift 6.1 or newer (Xcode 16.3+) on macOS 14 or newer. CI builds and
-tests with Swift 6.1 and 6.3, on Apple silicon and on Intel.
+tests with Swift 6.1 and 6.3.
 
 ## Usage
 
@@ -173,7 +173,7 @@ default 3072).
 ## Requirements
 
 - macOS 14 (Sonoma) or newer
-- Apple silicon or Intel (universal binary)
+- A Mac with Apple silicon (M1 or newer); Intel Macs are not supported
 
 OCR uses Apple's Vision framework, detects the language per page and runs
 entirely on-device.
@@ -264,7 +264,7 @@ verweigert er die Arbeit. `CleanPDF --sandbox-selftest` prüft das auf deinem Ma
 **Risiko-Score:** Jede Datei wird sofort analysiert (0–100) und zeigt im Detail,
 was das Original enthielt — inklusive gefundener URLs und JavaScript-Code.
 
-**Installieren:** Fertige App (Apple Silicon und Intel) unter
+**Installieren:** Fertige App (nur Apple Silicon) unter
 [Releases](https://github.com/MacBachi/CleanPDF/releases/latest) laden, oder
 selbst bauen mit `./build-app.sh`. Die App ist ad-hoc signiert, nicht notarisiert
 — beim ersten Start unter **Systemeinstellungen → Datenschutz & Sicherheit →

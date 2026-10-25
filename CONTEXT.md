@@ -30,16 +30,16 @@ Quelldateien) · Arbeitsverzeichnis: `/Users/mb/Dev/CleanPDF`.
   einstiege), „?“ im Hauptfenster, Links aus Leerzustand und Risiko-Details.
 - `Sources/CIsolation/` — C-Shim für `sandbox_init`, `proc_pid_rusage`,
   `setrlimit`.
-- `build-app.sh` — universelles Bundle (arm64 + x86_64, bricht ab, wenn eine
-  Architektur fehlt), Icon, ad-hoc-Signatur. Enthält die Bundle-Version.
+- `build-app.sh` — arm64-Bundle (bricht ab, wenn das Binary nicht arm64 ist),
+  Icon, ad-hoc-Signatur. Enthält die Bundle-Version.
 - `tests/run.sh` — End-to-End-Suite (40 Checks), `tests/make_*` erzeugen die
   Fixtures zur Laufzeit (keine Binär-Assets im Repo), `check_render_parity`
   vergleicht Original und Ausgabe pixelweise bei 200 dpi.
 - `tests/CleanPDFTests/` — XCTest (`swift test`), u. a. spielt einen
   kompromittierten Worker gegen die Validierung.
-- `.github/workflows/` — `ci.yml` (macos-15, macos-26, macos-15-intel),
-  `release.yml` (Tag `v*`: einmal bauen → genau dieses ZIP auf Intel und
-  Apple Silicon testen → veröffentlichen; manueller Start = Probelauf).
+- `.github/workflows/` — `ci.yml` (macos-15, macos-26), `release.yml` (Tag
+  `v*`: einmal bauen → genau dieses ZIP auf macos-15 und macos-26 testen →
+  veröffentlichen; manueller Start = Probelauf).
 
 ## Entscheidungen
 
@@ -86,6 +86,8 @@ Quelldateien) · Arbeitsverzeichnis: `/Users/mb/Dev/CleanPDF`.
   Swift 6.1+ — ältere Toolchains sind nicht mehr verifiziert.
 - CI-Runner: macos-14 wurde am 2. 11. 2026 abgeschaltet; Actions auf Node-24-
   Versionen (checkout v7, action-gh-release v3, upload/download-artifact).
+- Nur Apple Silicon (Entscheidung vom 25. 10. 2026): Intel wird nicht
+  unterstützt. v1.1.0 war noch universell; ab der nächsten Version arm64.
 - Veröffentlichte Tags werden nicht verschoben (v1.0.0 → v1.0.1 statt Umhängen).
 - Release-Tags werden signiert (SSH-Schlüssel aus 1Password, wie v1.0.x und
   v1.1.0). Ohne entsperrtes 1Password wird nichts unsigniert veröffentlicht.

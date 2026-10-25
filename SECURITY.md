@@ -39,9 +39,9 @@ covered — that requires VM-level isolation, as
 **Known dependency risk.** The sandbox is applied with `sandbox_init` and a
 custom profile. Apple marks this API deprecated but still ships it, and the
 profile-text form is not formally documented. CleanPDF fails closed if it
-stops working, and the test suite verifies on every CI run — on Apple
-silicon and Intel, oldest and newest supported macOS image — that the
-sandbox is in force (each check against a control run outside it).
+stops working, and the test suite verifies on every CI run — on the
+oldest and newest supported macOS image — that the sandbox is in force
+(each check against a control run outside it).
 
 ## Reporting a vulnerability
 

@@ -3,14 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Universal binary: Apple silicon and Intel (the app supports macOS 14+,
-# which still runs on Intel Macs).
-swift build -c release --arch arm64 --arch x86_64
-BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
-for arch in arm64 x86_64; do
-    lipo "$BIN_DIR/CleanPDF" -verify_arch "$arch" \
-        || { echo "error: universal binary lacks $arch" >&2; exit 1; }
-done
+# Apple silicon only (arm64): Intel Macs are deliberately not supported.
+swift build -c release --arch arm64
+BIN_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
+lipo "$BIN_DIR/CleanPDF" -verify_arch arm64 \
+    || { echo "error: binary is not arm64" >&2; exit 1; }
 
 APP="build/CleanPDF.app"
 rm -rf "$APP"

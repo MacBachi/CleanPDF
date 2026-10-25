@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build universal app
+    name: Build app
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
@@ -21,7 +21,7 @@ jobs:
           swift test
           ./tests/run.sh
 
-      - name: Build app bundle (arm64 + x86_64)
+      - name: Build app bundle (arm64)
         run: ./build-app.sh
 
       - name: Package
@@ -40,13 +40,13 @@ jobs:
 
   verify:
     # Run the full test suite against the exact binary that will be published,
-    # on Intel and on Apple silicon, before anything is released.
+    # on the oldest and newest supported macOS image, before anything is released.
     name: Verify artifact (${{ matrix.os }})
     needs: build
     strategy:
       fail-fast: true
       matrix:
-        os: [macos-15-intel, macos-26]
+        os: [macos-15, macos-26]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

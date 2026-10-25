@@ -12,12 +12,13 @@ cd CleanPDF
 swift build            # debug build
 swift test             # unit tests
 ./tests/run.sh         # end-to-end test suite
-./build-app.sh         # universal CleanPDF.app bundle
+./build-app.sh         # CleanPDF.app bundle (arm64)
 ```
 
 You need Swift 6.1 or newer (Xcode 16.3+) on macOS 14 or newer. CI runs on
-the oldest and newest supported GitHub macOS images (Swift 6.1 and 6.3) and on
-Intel hardware, so please keep the code building there. The end-to-end suite
+the oldest and newest supported GitHub macOS images (Swift 6.1 and 6.3), so
+please keep the code building there. CleanPDF targets Apple silicon only.
+The end-to-end suite
 also uses Python 3, `sips` and `sandbox-exec`, all of which ship with macOS.
 
 ## Project layout
@@ -34,7 +35,7 @@ also uses Python 3, `sips` and `sandbox-exec`, all of which ship with macOS.
 | `Sources/CleanPDF/HelpView.swift` | Help window, Help menu, deep links into help |
 | `Sources/CleanPDF/Main.swift` | Entry point: worker, self-test, CLI or GUI |
 | `Sources/CIsolation/` | Small C shim for `sandbox_init`, process memory and resource limits |
-| `build-app.sh` | Builds the universal, ad-hoc signed `.app` bundle with icon |
+| `build-app.sh` | Builds the arm64, ad-hoc signed `.app` bundle with icon |
 | `assets/generate_icon.swift` | Regenerates the app icon programmatically |
 | `tests/CleanPDFTests/` | XCTest unit tests (`swift test`) |
 | `tests/run.sh` | End-to-end suite; `tests/make_*` generate its fixtures |
@@ -71,9 +72,9 @@ project's [GPLv3](LICENSE).
 
 ## Releases
 
-Push a `vX.Y.Z` tag. The release workflow builds the universal app once, runs
-the full test suite against that exact zip on Intel and Apple silicon, and
-only then publishes it. Running the workflow manually is a dry run that skips
+Push a signed `vX.Y.Z` tag. The release workflow builds the app once, runs
+the full test suite against that exact zip on the oldest and newest supported
+macOS image, and only then publishes it. Running the workflow manually is a dry run that skips
 publishing. Keep the bundle version in `build-app.sh` and `CHANGELOG.md` in
 step with the tag.
 

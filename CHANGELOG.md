@@ -19,6 +19,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - README: first-launch instructions for macOS 15 and later (Privacy &
   Security → Open Anyway; right-click → Open no longer bypasses Gatekeeper).
 
+### Removed
+- Intel support. CleanPDF now targets Apple silicon only: the app is built
+  for arm64, and the Intel CI and release runners are gone. (1.1.0 was the
+  last universal release.)
+
 ### Fixed
 - `--sandbox-selftest` with a missing file reported the read as "blocked";
   it now requires an existing file and directory.
