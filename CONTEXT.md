@@ -87,7 +87,7 @@ Quelldateien) · Arbeitsverzeichnis: `/Users/mb/Dev/CleanPDF`.
 - CI-Runner: macos-14 wurde am 2. 11. 2026 abgeschaltet; Actions auf Node-24-
   Versionen (checkout v7, action-gh-release v3, upload/download-artifact).
 - Nur Apple Silicon (Entscheidung vom 25. 10. 2026): Intel wird nicht
-  unterstützt. v1.1.0 war noch universell; ab der nächsten Version arm64.
+  unterstützt. v1.1.0 war die letzte universelle Version, ab v1.2.0 arm64.
 - Veröffentlichte Tags werden nicht verschoben (v1.0.0 → v1.0.1 statt Umhängen).
 - Release-Tags werden signiert (SSH-Schlüssel aus 1Password, wie v1.0.x und
   v1.1.0). Ohne entsperrtes 1Password wird nichts unsigniert veröffentlicht.
